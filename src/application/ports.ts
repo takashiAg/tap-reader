@@ -3,6 +3,13 @@ import type {
   RecognitionFrame,
   RecognitionMode,
 } from '../domain/recognition/recognition';
+import type {
+  PracticePhrase,
+  PronunciationReview,
+  TutorMessage,
+  TutorMode,
+  TutorReply,
+} from '../domain/conversation/conversation';
 
 export type OcrPort = {
   recognizeLiveFrame(languageId: LanguageId, mode: RecognitionMode, step: number): RecognitionFrame;
@@ -12,4 +19,17 @@ export type OcrPort = {
 export type SpeechPort = {
   speak(text: string, language: LanguageProfile, rate?: number): void;
   stop(): void;
+};
+
+export type TutorPort = {
+  reply(input: {
+    mode: TutorMode;
+    currentPhrase: PracticePhrase;
+    messages: TutorMessage[];
+    learnerText: string;
+  }): Promise<TutorReply>;
+};
+
+export type PronunciationReviewPort = {
+  review(expected: PracticePhrase, transcript: string): PronunciationReview;
 };
