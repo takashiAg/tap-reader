@@ -36,6 +36,7 @@ export function LiveReaderScreen() {
   const [frame, setFrame] = useState<UiRecognitionFrame>(() => reader.getInitialFrame('ko', 'word'));
   const [selectedToken, setSelectedToken] = useState<UiRecognizedToken | null>(null);
   const [cameraSize, setCameraSize] = useState<CameraSize>({ width: 1, height: 1 });
+  const [isCameraAvailable, setIsCameraAvailable] = useState<boolean | null>(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [isRecognizingLive, setIsRecognizingLive] = useState(false);
@@ -44,6 +45,23 @@ export function LiveReaderScreen() {
   const languages = useMemo(() => reader.getLanguages(), [reader]);
 
   useEffect(() => {
+    CameraView.isAvailableAsync()
+      .then(setIsCameraAvailable)
+      .catch(() => setIsCameraAvailable(false));
+  }, []);
+
+  useEffect(() => {
+    if (isCameraAvailable === false) {
+      setFrame((currentFrame) =>
+        reader.recognizeLiveFrame(
+          languageId,
+          mode,
+          Math.floor(currentFrame.capturedAt / 1200) + 1,
+        ),
+      );
+      return;
+    }
+
     if (!isCameraReady) {
       return;
     }
@@ -83,7 +101,7 @@ export function LiveReaderScreen() {
     const timer = setInterval(recognizeCameraImage, 2600);
 
     return () => clearInterval(timer);
-  }, [isCameraReady, isProcessingImage, languageId, mode, reader]);
+  }, [isCameraAvailable, isCameraReady, isProcessingImage, languageId, mode, reader]);
 
   const handleCameraLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
@@ -130,7 +148,7 @@ export function LiveReaderScreen() {
     }
   };
 
-  if (!permission) {
+  if (!permission || isCameraAvailable === null) {
     return (
       <SafeAreaView style={styles.centered}>
         <ActivityIndicator color="#0F766E" />
@@ -138,7 +156,7 @@ export function LiveReaderScreen() {
     );
   }
 
-  if (!permission.granted) {
+  if (isCameraAvailable && !permission.granted) {
     return (
       <SafeAreaView style={styles.permissionScreen}>
         <StatusBar style="dark" />
@@ -160,18 +178,107 @@ export function LiveReaderScreen() {
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
-      <CameraView
-        ref={cameraRef}
-        style={styles.camera}
-        facing="back"
-        onCameraReady={() => setIsCameraReady(true)}
-        onLayout={handleCameraLayout}
-      >
+      {isCameraAvailable ? (
+        <CameraView
+          ref={cameraRef}
+          style={styles.camera}
+          facing="back"
+          onCameraReady={() => setIsCameraReady(true)}
+          onLayout={handleCameraLayout}
+        >
+          <ReaderOverlay
+            cameraSize={cameraSize}
+            frame={frame}
+            handleCameraLayout={handleCameraLayout}
+            handleLanguageChange={handleLanguageChange}
+            handleModeChange={handleModeChange}
+            handlePickImage={handlePickImage}
+            handleSpeakAll={handleSpeakAll}
+            handleTokenPress={handleTokenPress}
+            isCameraAvailable={isCameraAvailable}
+            isProcessingImage={isProcessingImage}
+            isRecognizingLive={isRecognizingLive}
+            language={language}
+            languageId={languageId}
+            languages={languages}
+            mode={mode}
+            reader={reader}
+            selectedToken={selectedToken}
+          />
+        </CameraView>
+      ) : (
+        <View style={styles.cameraUnavailableSurface} onLayout={handleCameraLayout}>
+          <ReaderOverlay
+            cameraSize={cameraSize}
+            frame={frame}
+            handleCameraLayout={handleCameraLayout}
+            handleLanguageChange={handleLanguageChange}
+            handleModeChange={handleModeChange}
+            handlePickImage={handlePickImage}
+            handleSpeakAll={handleSpeakAll}
+            handleTokenPress={handleTokenPress}
+            isCameraAvailable={isCameraAvailable}
+            isProcessingImage={isProcessingImage}
+            isRecognizingLive={false}
+            language={language}
+            languageId={languageId}
+            languages={languages}
+            mode={mode}
+            reader={reader}
+            selectedToken={selectedToken}
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
+type ReaderOverlayProps = {
+  cameraSize: CameraSize;
+  frame: UiRecognitionFrame;
+  handleCameraLayout: (event: LayoutChangeEvent) => void;
+  handleLanguageChange: (languageId: UiLanguageId) => void;
+  handleModeChange: (mode: UiRecognitionMode) => void;
+  handlePickImage: () => void;
+  handleSpeakAll: () => void;
+  handleTokenPress: (token: UiRecognizedToken) => void;
+  isCameraAvailable: boolean;
+  isProcessingImage: boolean;
+  isRecognizingLive: boolean;
+  language: ReturnType<typeof liveReaderUiAdapter.getLanguage>;
+  languageId: UiLanguageId;
+  languages: ReturnType<typeof liveReaderUiAdapter.getLanguages>;
+  mode: UiRecognitionMode;
+  reader: typeof liveReaderUiAdapter;
+  selectedToken: UiRecognizedToken | null;
+};
+
+function ReaderOverlay({
+  cameraSize,
+  frame,
+  handleLanguageChange,
+  handleModeChange,
+  handlePickImage,
+  handleSpeakAll,
+  handleTokenPress,
+  isCameraAvailable,
+  isProcessingImage,
+  isRecognizingLive,
+  language,
+  languageId,
+  languages,
+  mode,
+  reader,
+  selectedToken,
+}: ReaderOverlayProps) {
+  return (
         <SafeAreaView style={styles.overlay}>
           <View style={styles.topBar}>
             <View>
               <Text style={styles.appTitle}>Live Reader</Text>
-              <Text style={styles.appSubtitle}>{mode === 'word' ? language.wordHint : language.characterHint}</Text>
+              <Text style={styles.appSubtitle}>
+                {isCameraAvailable ? (mode === 'word' ? language.wordHint : language.characterHint) : 'Camera is unavailable here. Use the mock reader.'}
+              </Text>
             </View>
             <Pressable
               accessibilityLabel="Stop speech"
@@ -271,14 +378,12 @@ export function LiveReaderScreen() {
               <View style={styles.liveStatus}>
                 <View style={[styles.liveDot, isRecognizingLive && styles.liveDotActive]} />
                 <Text style={styles.liveText}>
-                  {isRecognizingLive ? 'Recognizing' : 'Live OCR'}
+                  {isCameraAvailable ? (isRecognizingLive ? 'Recognizing' : 'Live OCR') : 'Mock camera'}
                 </Text>
               </View>
             </View>
           </View>
         </SafeAreaView>
-      </CameraView>
-    </View>
   );
 }
 
@@ -289,6 +394,10 @@ const styles = StyleSheet.create({
   },
   camera: {
     flex: 1,
+  },
+  cameraUnavailableSurface: {
+    flex: 1,
+    backgroundColor: '#172554',
   },
   overlay: {
     flex: 1,
