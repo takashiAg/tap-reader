@@ -1,6 +1,7 @@
 import type { PSM as PsmType } from 'tesseract.js';
 
 import type { VocabularyDeck } from '../../domain/vocabulary/vocabulary';
+import type { OcrLanguagePreset } from './ocrLanguagePresets';
 import { createDeckFromText } from './vocabularyTextParser';
 
 export type OcrProgress = {
@@ -15,12 +16,16 @@ export type ExtractedVocabularyDeck = {
 
 export async function extractVocabularyFromImage(
   image: File,
+  preset: OcrLanguagePreset,
   onProgress: (progress: OcrProgress) => void,
 ): Promise<ExtractedVocabularyDeck> {
   onProgress({ label: 'OCRエンジンを準備中', progress: 0.05 });
 
   const { createWorker, PSM } = await import('tesseract.js');
-  const worker = await createWorker('kor+jpn', 1, {
+  const worker = await createWorker(preset.tesseractLanguages, 1, {
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0',
+    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/worker.min.js',
     logger(message) {
       if ('progress' in message && typeof message.progress === 'number') {
         onProgress({
@@ -44,7 +49,7 @@ export async function extractVocabularyFromImage(
     onProgress({ label: '単語カードを作成中', progress: 0.95 });
 
     return {
-      deck: createDeckFromText(rawText),
+      deck: createDeckFromText(rawText, '画像から作成', preset),
       rawText,
     };
   } finally {

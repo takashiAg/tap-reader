@@ -1,13 +1,18 @@
 import type { VocabularyCard, VocabularyDeck } from '../../domain/vocabulary/vocabulary';
 import { travelVocabularyDeck } from '../../domain/vocabulary/sampleDeck';
+import type { OcrLanguagePreset } from './ocrLanguagePresets';
 
 type PendingKorean = {
   text: string;
   index: number;
 };
 
-export function createDeckFromText(text: string, title = '画像から作成'): VocabularyDeck {
-  const cards = parseVocabularyCards(text);
+export function createDeckFromText(
+  text: string,
+  title = '画像から作成',
+  preset?: OcrLanguagePreset,
+): VocabularyDeck {
+  const cards = parseVocabularyCards(text, preset);
 
   if (cards.length === 0) {
     return {
@@ -27,31 +32,31 @@ export function createDeckFromText(text: string, title = '画像から作成'): 
   };
 }
 
-export function parseVocabularyCards(text: string): VocabularyCard[] {
+export function parseVocabularyCards(text: string, preset?: OcrLanguagePreset): VocabularyCard[] {
   const lines = normalizeLines(text);
   const cards: VocabularyCard[] = [];
-  const pendingKorean: PendingKorean[] = [];
+  const pendingTerms: PendingKorean[] = [];
 
   lines.forEach((line, index) => {
-    const inlinePair = parseInlinePair(line);
+    const inlinePair = parseInlinePair(line, preset);
 
     if (inlinePair) {
       cards.push(createCard(inlinePair.korean, inlinePair.japanese, cards.length));
       return;
     }
 
-    const koreanWords = extractKoreanWords(line);
-    const japaneseText = extractJapaneseText(line);
+    const terms = extractTerms(line, preset);
+    const japaneseText = extractJapaneseText(line, terms);
 
-    if (koreanWords.length > 0 && !japaneseText) {
-      koreanWords.forEach((word) => pendingKorean.push({ text: word, index }));
+    if (terms.length > 0 && !japaneseText) {
+      terms.forEach((word) => pendingTerms.push({ text: word, index }));
       return;
     }
 
-    if (japaneseText && pendingKorean.length > 0) {
-      const korean = pendingKorean.shift();
-      if (korean && index - korean.index <= 4) {
-        cards.push(createCard(korean.text, japaneseText, cards.length));
+    if (japaneseText && pendingTerms.length > 0) {
+      const term = pendingTerms.shift();
+      if (term && index - term.index <= 4) {
+        cards.push(createCard(term.text, japaneseText, cards.length));
       }
     }
   });
@@ -67,9 +72,9 @@ function normalizeLines(text: string): string[] {
     .filter((line) => !/^\d+$/.test(line));
 }
 
-function parseInlinePair(line: string): { korean: string; japanese: string } | null {
-  const koreanWords = extractKoreanWords(line);
-  const japaneseText = extractJapaneseText(line);
+function parseInlinePair(line: string, preset?: OcrLanguagePreset): { korean: string; japanese: string } | null {
+  const koreanWords = extractTerms(line, preset);
+  const japaneseText = extractJapaneseText(line, koreanWords);
 
   if (koreanWords.length === 0 || !japaneseText) {
     return null;
@@ -81,17 +86,28 @@ function parseInlinePair(line: string): { korean: string; japanese: string } | n
   };
 }
 
-function extractKoreanWords(text: string): string[] {
-  return Array.from(text.matchAll(/[가-힣][가-힣\s]{0,18}[가-힣]/g))
-    .map((match) => cleanKorean(match[0]))
+function extractTerms(text: string, preset?: OcrLanguagePreset): string[] {
+  const pattern = preset?.termPattern ?? /[가-힣][가-힣\s]{0,18}[가-힣]/g;
+
+  return Array.from(text.matchAll(pattern))
+    .map((match) => cleanTerm(match[0]))
     .filter((word) => word.length > 0 && word.length <= 18);
 }
 
-function extractJapaneseText(text: string): string {
-  const withoutKorean = text.replace(/[가-힣\s]+/g, ' ');
+function extractJapaneseText(text: string, terms: string[] = []): string {
+  const escapedTerms = terms.map(escapeRegExp).filter(Boolean);
+  const withoutTerms = escapedTerms.reduce(
+    (currentText, term) => currentText.replace(new RegExp(term, 'gi'), ' '),
+    text,
+  );
+  const withoutKorean = withoutTerms.replace(/[가-힣\s]+/g, ' ');
   const match = withoutKorean.match(/[ぁ-んァ-ン一-龯々ーA-Za-z0-9・（）()、。/\s]+/g);
 
   return cleanJapanese(match?.join(' ') ?? '');
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function createCard(korean: string, japanese: string, index: number): VocabularyCard {
@@ -119,8 +135,11 @@ function dedupeCards(cards: VocabularyCard[]): VocabularyCard[] {
   });
 }
 
-function cleanKorean(text: string): string {
-  return text.replace(/[^\uAC00-\uD7A3\s]/g, '').replace(/\s+/g, ' ').trim();
+function cleanTerm(text: string): string {
+  return text
+    .replace(/[^\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7A3々ーA-Za-z0-9\s'-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function cleanJapanese(text: string): string {

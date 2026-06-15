@@ -138,6 +138,29 @@ button {
   gap: 8px;
 }
 
+.language-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.language-chip {
+  min-height: 34px;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #334155;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.language-chip-active {
+  border-color: #0f766e;
+  color: #ffffff;
+  background: #0f766e;
+}
+
 .progress-header {
   display: flex;
   align-items: center;

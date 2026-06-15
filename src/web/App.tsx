@@ -12,7 +12,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { travelVocabularyDeck } from '../domain/vocabulary/sampleDeck';
 import type { VocabularyCard, VocabularyDeck, VocabularyReviewMark } from '../domain/vocabulary/vocabulary';
-import { prepareImageFile } from './ocr/prepareImageFile';
+import { extractVocabularyWithAi } from './ocr/aiVocabularyExtractor';
+import { getOcrLanguagePreset, ocrLanguagePresets, type OcrLanguagePresetId } from './ocr/ocrLanguagePresets';
+import { isSupportedImageFile, prepareImageFile } from './ocr/prepareImageFile';
 import { extractVocabularyFromImage, type OcrProgress } from './ocr/tesseractVocabularyExtractor';
 import { createDeckFromText } from './ocr/vocabularyTextParser';
 import type { AppInstallPromptEvent } from './pwa';
@@ -35,6 +37,7 @@ export function App() {
   const [rawText, setRawText] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [languagePresetId, setLanguagePresetId] = useState<OcrLanguagePresetId>('ko-ja');
   const [installPrompt, setInstallPrompt] = useState<AppInstallPromptEvent | null>(null);
 
   useEffect(() => {
@@ -49,6 +52,7 @@ export function App() {
   }, []);
 
   const selectedCard = deck.cards[selectedIndex] ?? deck.cards[0];
+  const languagePreset = getOcrLanguagePreset(languagePresetId);
   const knownCount = useMemo(
     () => deck.cards.filter((card) => marks[card.id] === 'known').length,
     [deck.cards, marks],
@@ -59,7 +63,7 @@ export function App() {
   );
 
   const importImage = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
+    if (!isSupportedImageFile(file)) {
       setProgress({ label: '画像ファイルを選んでください', progress: 0 });
       return;
     }
@@ -76,7 +80,8 @@ export function App() {
         return URL.createObjectURL(preparedFile);
       });
 
-      const result = await extractVocabularyFromImage(preparedFile, setProgress);
+      setProgress({ label: 'AIで教材レイアウトを解析中', progress: 0.18 });
+      const result = await extractWithBestAvailableRecognizer(preparedFile, languagePreset, setProgress);
       setDeck(result.deck);
       setRawText(result.rawText);
       setSelectedIndex(0);
@@ -87,7 +92,7 @@ export function App() {
         progress: 1,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'OCRに失敗しました';
+      const message = normalizeErrorMessage(error) || 'OCRに失敗しました';
       setProgress({
         label: `${message}。OCRテキスト欄に手入力して再生成できます。`,
         progress: 0,
@@ -98,7 +103,7 @@ export function App() {
   };
 
   const rebuildFromText = () => {
-    const nextDeck = createDeckFromText(rawText, 'テキストから作成');
+    const nextDeck = createDeckFromText(rawText, 'テキストから作成', languagePreset);
     setDeck(nextDeck);
     setSelectedIndex(0);
     setMarks({});
@@ -162,7 +167,7 @@ export function App() {
         <section className="import-panel">
           <input
             ref={fileInputRef}
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             className="sr-only"
             type="file"
             onChange={(event) => {
@@ -173,6 +178,19 @@ export function App() {
               event.currentTarget.value = '';
             }}
           />
+
+          <div className="language-panel" aria-label="OCR言語">
+            {ocrLanguagePresets.map((preset) => (
+              <button
+                className={`language-chip ${preset.id === languagePresetId ? 'language-chip-active' : ''}`}
+                key={preset.id}
+                type="button"
+                onClick={() => setLanguagePresetId(preset.id)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
 
           <div
             className={`drop-zone ${isDragging ? 'drop-zone-active' : ''}`}
@@ -259,7 +277,7 @@ export function App() {
               onNext={nextCard}
               onPrevious={previousCard}
               onSpeakJapanese={() => speak(selectedCard.japanese, 'ja-JP', 0.92)}
-              onSpeakKorean={() => speak(selectedCard.korean, 'ko-KR', 0.82)}
+              onSpeakTerm={() => speak(selectedCard.korean, languagePreset.speechLocale, 0.82)}
               onToggleMark={toggleMark}
               onToggleMeaning={() => setIsMeaningVisible((visible) => !visible)}
             />
@@ -293,6 +311,19 @@ export function App() {
   );
 }
 
+async function extractWithBestAvailableRecognizer(
+  image: File,
+  languagePreset: ReturnType<typeof getOcrLanguagePreset>,
+  setProgress: (progress: OcrProgress) => void,
+) {
+  try {
+    return await extractVocabularyWithAi(image, languagePreset);
+  } catch {
+    setProgress({ label: 'AIが使えないためブラウザOCRに切り替えます', progress: 0.22 });
+    return extractVocabularyFromImage(image, languagePreset, setProgress);
+  }
+}
+
 type VocabularyReviewCardProps = {
   card: VocabularyCard;
   index: number;
@@ -302,7 +333,7 @@ type VocabularyReviewCardProps = {
   onNext: () => void;
   onPrevious: () => void;
   onSpeakJapanese: () => void;
-  onSpeakKorean: () => void;
+  onSpeakTerm: () => void;
   onToggleMark: () => void;
   onToggleMeaning: () => void;
 };
@@ -316,7 +347,7 @@ function VocabularyReviewCard({
   onNext,
   onPrevious,
   onSpeakJapanese,
-  onSpeakKorean,
+  onSpeakTerm,
   onToggleMark,
   onToggleMeaning,
 }: VocabularyReviewCardProps) {
@@ -356,9 +387,9 @@ function VocabularyReviewCard({
         <button className="icon-action" type="button" onClick={onPrevious} aria-label="前のカード">
           <RotateCcw size={18} />
         </button>
-        <button className="primary-button" type="button" onClick={onSpeakKorean}>
+        <button className="primary-button" type="button" onClick={onSpeakTerm}>
           <Volume2 size={18} />
-          韓国語
+          単語
         </button>
         <button className="secondary-button" type="button" onClick={onSpeakJapanese}>
           <Languages size={18} />
@@ -412,5 +443,21 @@ function markLabel(mark: VocabularyReviewMark): string {
       return '復習中';
     case 'unknown':
       return '未確認';
+  }
+}
+
+function normalizeErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return '';
   }
 }

@@ -31,6 +31,7 @@ self.addEventListener('fetch', (event) => {
   const shouldCache =
     requestUrl.origin === self.location.origin ||
     requestUrl.hostname.includes('tesseract.projectnaptha.com') ||
+    requestUrl.hostname.includes('tessdata.projectnaptha.com') ||
     requestUrl.hostname.includes('jsdelivr.net') ||
     requestUrl.hostname.includes('unpkg.com');
 
