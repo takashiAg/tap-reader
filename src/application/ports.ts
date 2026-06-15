@@ -10,6 +10,7 @@ import type {
   TutorMode,
   TutorReply,
 } from '../domain/conversation/conversation';
+import type { VocabularyDeck } from '../domain/vocabulary/vocabulary';
 
 export type OcrPort = {
   recognizeLiveFrame(languageId: LanguageId, mode: RecognitionMode, step: number): RecognitionFrame;
@@ -32,4 +33,8 @@ export type TutorPort = {
 
 export type PronunciationReviewPort = {
   review(expected: PracticePhrase, transcript: string): PronunciationReview;
+};
+
+export type VocabularyExtractionPort = {
+  extractDeckFromImage(imageUri: string): Promise<VocabularyDeck>;
 };

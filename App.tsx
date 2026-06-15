@@ -3,8 +3,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { LiveReaderScreen } from './src/ui/screens/LiveReaderScreen';
 import { TutorConversationScreen } from './src/ui/screens/TutorConversationScreen';
+import { VocabularyDeckScreen } from './src/ui/screens/VocabularyDeckScreen';
 
-type AppScreen = 'tutor' | 'camera';
+type AppScreen = 'tutor' | 'camera' | 'vocabulary';
 
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>('tutor');
@@ -20,7 +21,16 @@ export default function App() {
     );
   }
 
-  return <TutorConversationScreen onOpenCamera={() => setScreen('camera')} />;
+  if (screen === 'vocabulary') {
+    return <VocabularyDeckScreen onBack={() => setScreen('tutor')} />;
+  }
+
+  return (
+    <TutorConversationScreen
+      onOpenCamera={() => setScreen('camera')}
+      onOpenVocabulary={() => setScreen('vocabulary')}
+    />
+  );
 }
 
 const styles = StyleSheet.create({

@@ -24,9 +24,10 @@ import type {
 
 type TutorConversationScreenProps = {
   onOpenCamera: () => void;
+  onOpenVocabulary: () => void;
 };
 
-export function TutorConversationScreen({ onOpenCamera }: TutorConversationScreenProps) {
+export function TutorConversationScreen({ onOpenCamera, onOpenVocabulary }: TutorConversationScreenProps) {
   const tutor = tutorUiAdapter;
   const initialPhrase = useMemo(() => tutor.getInitialPhrase(), [tutor]);
   const initialMessages = useMemo(() => tutor.getInitialMessages(initialPhrase), [initialPhrase, tutor]);
@@ -131,6 +132,9 @@ export function TutorConversationScreen({ onOpenCamera }: TutorConversationScree
           <View style={styles.headerActions}>
             <Pressable accessibilityLabel="Stop speech" style={styles.iconButton} onPress={tutor.stopSpeech}>
               <Ionicons name="volume-mute-outline" size={20} color="#0F172A" />
+            </Pressable>
+            <Pressable accessibilityLabel="Open word deck" style={styles.iconButton} onPress={onOpenVocabulary}>
+              <Ionicons name="albums-outline" size={20} color="#0F172A" />
             </Pressable>
             <Pressable accessibilityLabel="Open camera reader" style={styles.iconButton} onPress={onOpenCamera}>
               <Ionicons name="camera-outline" size={20} color="#0F172A" />
