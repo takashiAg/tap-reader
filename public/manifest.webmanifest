@@ -1,0 +1,19 @@
+{
+  "name": "Tap Reader",
+  "short_name": "Tap Reader",
+  "description": "教材画像から韓国語の単語カードを作る復習アプリ",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#eef2f7",
+  "theme_color": "#0f766e",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

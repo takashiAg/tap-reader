@@ -1,10 +1,30 @@
-// https://docs.expo.dev/guides/using-eslint/
-const { defineConfig } = require('eslint/config');
-const expoConfig = require("eslint-config-expo/flat");
+const js = require('@eslint/js');
+const tseslint = require('typescript-eslint');
 
-module.exports = defineConfig([
-  expoConfig,
+module.exports = tseslint.config(
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
-    ignores: ["dist/*"],
-  }
-]);
+    files: ['src/main.tsx', 'src/web/**/*.{ts,tsx}', 'src/domain/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: './tsconfig.json',
+      },
+    },
+  },
+  {
+    ignores: [
+      'android/**',
+      'dist/**',
+      'ios/**',
+      'modules/**',
+      'node_modules/**',
+      'plugins/**',
+      'src/application/**',
+      'src/infrastructure/**',
+      'src/ui/**',
+      'App.tsx',
+      'index.ts',
+    ],
+  },
+);
