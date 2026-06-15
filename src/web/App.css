@@ -95,6 +95,31 @@ button {
   padding: 16px;
 }
 
+.lesson-summary {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #ccfbf1;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ecfeff;
+}
+
+.lesson-summary h2,
+.lesson-summary p {
+  margin: 0;
+}
+
+.lesson-summary h2 {
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.lesson-summary p {
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .study-panel {
   padding: 18px;
 }
@@ -128,7 +153,7 @@ button {
 
 .image-preview {
   width: 100%;
-  max-height: 520px;
+  max-height: 620px;
   object-fit: contain;
   background: #e2e8f0;
 }
@@ -289,6 +314,12 @@ button {
 .meaning-text {
   color: #0f172a !important;
   font-size: 30px !important;
+  font-weight: 900;
+}
+
+.reading-text {
+  color: #0f766e !important;
+  font-size: 20px !important;
   font-weight: 900;
 }
 

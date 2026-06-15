@@ -8,9 +8,12 @@ import {
   RotateCcw,
   Volume2,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { travelVocabularyDeck } from '../domain/vocabulary/sampleDeck';
+import {
+  lessonTravelVocabularyDeck,
+  lessonTravelVocabularyRawText,
+} from '../domain/vocabulary/lessonDeck';
 import type { VocabularyCard, VocabularyDeck, VocabularyReviewMark } from '../domain/vocabulary/vocabulary';
 import { extractVocabularyWithAi } from './ocr/aiVocabularyExtractor';
 import { getOcrLanguagePreset, ocrLanguagePresets, type OcrLanguagePresetId } from './ocr/ocrLanguagePresets';
@@ -22,20 +25,22 @@ import type { AppInstallPromptEvent } from './pwa';
 type ReviewMarks = Record<string, VocabularyReviewMark>;
 
 const initialProgress: OcrProgress = {
-  label: '画像を入れるとOCRで単語カード化します',
-  progress: 0,
+  label: '教材画像から作成済みの単語デッキです',
+  progress: 1,
 };
+
+const lessonImageUrl = '/lesson-travel-vocab.jpg';
 
 export function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [deck, setDeck] = useState<VocabularyDeck>(travelVocabularyDeck);
+  const [deck, setDeck] = useState<VocabularyDeck>(lessonTravelVocabularyDeck);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [marks, setMarks] = useState<ReviewMarks>({});
   const [isMeaningVisible, setIsMeaningVisible] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [progress, setProgress] = useState<OcrProgress>(initialProgress);
-  const [rawText, setRawText] = useState('');
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [rawText, setRawText] = useState(lessonTravelVocabularyRawText);
+  const [imageUrl, setImageUrl] = useState<string | null>(lessonImageUrl);
   const [isDragging, setIsDragging] = useState(false);
   const [languagePresetId, setLanguagePresetId] = useState<OcrLanguagePresetId>('ko-ja');
   const [installPrompt, setInstallPrompt] = useState<AppInstallPromptEvent | null>(null);
@@ -61,6 +66,55 @@ export function App() {
     () => deck.cards.filter((card) => marks[card.id] === 'learning').length,
     [deck.cards, marks],
   );
+  const speakSelectedCard = useCallback(() => {
+    if (!selectedCard) {
+      return;
+    }
+
+    speak(selectedCard.korean, languagePreset.speechLocale, 0.72);
+  }, [languagePreset.speechLocale, selectedCard]);
+
+  const nextCard = useCallback(() => {
+    setSelectedIndex((currentIndex) => (currentIndex + 1) % deck.cards.length);
+    setIsMeaningVisible(false);
+  }, [deck.cards.length]);
+
+  const previousCard = useCallback(() => {
+    setSelectedIndex((currentIndex) => (currentIndex - 1 + deck.cards.length) % deck.cards.length);
+    setIsMeaningVisible(false);
+  }, [deck.cards.length]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        nextCard();
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        previousCard();
+      }
+
+      if (event.key === ' ') {
+        event.preventDefault();
+        speakSelectedCard();
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        setIsMeaningVisible((visible) => !visible);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [nextCard, previousCard, speakSelectedCard]);
 
   const importImage = async (file: File) => {
     if (!isSupportedImageFile(file)) {
@@ -111,16 +165,6 @@ export function App() {
     setProgress({ label: `${nextDeck.cards.length}枚の単語カードを作りました`, progress: 1 });
   };
 
-  const nextCard = () => {
-    setSelectedIndex((currentIndex) => (currentIndex + 1) % deck.cards.length);
-    setIsMeaningVisible(false);
-  };
-
-  const previousCard = () => {
-    setSelectedIndex((currentIndex) => (currentIndex - 1 + deck.cards.length) % deck.cards.length);
-    setIsMeaningVisible(false);
-  };
-
   const toggleMark = () => {
     if (!selectedCard) {
       return;
@@ -130,6 +174,16 @@ export function App() {
       ...currentMarks,
       [selectedCard.id]: nextReviewMark(currentMarks[selectedCard.id] ?? 'unknown'),
     }));
+  };
+
+  const resetLessonDeck = () => {
+    setDeck(lessonTravelVocabularyDeck);
+    setSelectedIndex(0);
+    setMarks({});
+    setIsMeaningVisible(false);
+    setRawText(lessonTravelVocabularyRawText);
+    setImageUrl(lessonImageUrl);
+    setProgress(initialProgress);
   };
 
   return (
@@ -143,6 +197,10 @@ export function App() {
           <button className="ghost-button" type="button" onClick={() => stopSpeech()}>
             <Volume2 size={18} />
             Stop
+          </button>
+          <button className="ghost-button" type="button" onClick={resetLessonDeck}>
+            <BookOpen size={18} />
+            教材に戻す
           </button>
           {installPrompt ? (
             <button
@@ -178,6 +236,14 @@ export function App() {
               event.currentTarget.value = '';
             }}
           />
+
+          <div className="lesson-summary">
+            <p className="eyebrow">Source</p>
+            <h2>IMG_5422 の旅行単語</h2>
+            <p>
+              画像で読める単語を手で整理した学習デッキです。カードをクリックすると意味、例文、メモが見られます。
+            </p>
+          </div>
 
           <div className="language-panel" aria-label="OCR言語">
             {ocrLanguagePresets.map((preset) => (
@@ -219,7 +285,7 @@ export function App() {
             tabIndex={0}
           >
             {imageUrl ? (
-              <img alt="取り込んだ教材" className="image-preview" src={imageUrl} />
+              <img alt="旅行に役立つ韓国語単語帳" className="image-preview" src={imageUrl} />
             ) : (
               <div className="drop-empty">
                 <ImagePlus size={30} />
@@ -239,7 +305,7 @@ export function App() {
           </div>
 
           <label className="text-editor-label" htmlFor="ocr-text">
-            OCRテキスト
+            単語リスト
           </label>
           <textarea
             id="ocr-text"
@@ -277,7 +343,7 @@ export function App() {
               onNext={nextCard}
               onPrevious={previousCard}
               onSpeakJapanese={() => speak(selectedCard.japanese, 'ja-JP', 0.92)}
-              onSpeakTerm={() => speak(selectedCard.korean, languagePreset.speechLocale, 0.82)}
+              onSpeakTerm={speakSelectedCard}
               onToggleMark={toggleMark}
               onToggleMeaning={() => setIsMeaningVisible((visible) => !visible)}
             />
@@ -351,8 +417,42 @@ function VocabularyReviewCard({
   onToggleMark,
   onToggleMeaning,
 }: VocabularyReviewCardProps) {
+  const touchStartX = useRef<number | null>(null);
+
+  const handleTouchEnd = (clientX: number) => {
+    if (touchStartX.current === null) {
+      return;
+    }
+
+    const diff = clientX - touchStartX.current;
+    touchStartX.current = null;
+
+    if (Math.abs(diff) < 48) {
+      return;
+    }
+
+    if (diff < 0) {
+      onNext();
+      return;
+    }
+
+    onPrevious();
+  };
+
   return (
-    <div className="review-card">
+    <div
+      className="review-card"
+      onPointerDown={(event) => {
+        if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+          touchStartX.current = event.clientX;
+        }
+      }}
+      onPointerUp={(event) => handleTouchEnd(event.clientX)}
+      onTouchStart={(event) => {
+        touchStartX.current = event.touches[0]?.clientX ?? null;
+      }}
+      onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0]?.clientX ?? 0)}
+    >
       <div className="review-meta">
         <span>
           {index + 1} / {total}
@@ -365,12 +465,17 @@ function VocabularyReviewCard({
 
       <button className="word-face" type="button" onClick={onToggleMeaning}>
         <strong>{card.korean}</strong>
-        {card.reading ? <span>{card.reading}</span> : null}
         {!isMeaningVisible ? <em>クリックで意味を見る</em> : null}
       </button>
 
       {isMeaningVisible ? (
         <div className="meaning-block">
+          {card.reading ? (
+            <>
+              <span className="section-label">読み方</span>
+              <p className="reading-text">{card.reading}</p>
+            </>
+          ) : null}
           <span className="section-label">意味</span>
           <p className="meaning-text">{card.japanese}</p>
           {card.example ? (
@@ -414,7 +519,24 @@ function speak(text: string, lang: string, rate: number) {
   const utterance = new SpeechSynthesisUtterance(normalized);
   utterance.lang = lang;
   utterance.rate = rate;
+  utterance.pitch = 1;
+  const voice = selectVoice(lang);
+  if (voice) {
+    utterance.voice = voice;
+  }
   window.speechSynthesis.speak(utterance);
+}
+
+function selectVoice(lang: string): SpeechSynthesisVoice | undefined {
+  const voices = window.speechSynthesis.getVoices();
+  const langPrefix = lang.split('-')[0];
+
+  return (
+    voices.find((voice) => voice.lang === lang && voice.localService) ??
+    voices.find((voice) => voice.lang === lang) ??
+    voices.find((voice) => voice.lang.toLowerCase().startsWith(langPrefix.toLowerCase()) && voice.localService) ??
+    voices.find((voice) => voice.lang.toLowerCase().startsWith(langPrefix.toLowerCase()))
+  );
 }
 
 function stopSpeech() {
