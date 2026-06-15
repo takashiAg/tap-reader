@@ -11,7 +11,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Use the camera to recognize text and play its pronunciation.",
         "NSPhotoLibraryUsageDescription": "Import text images to recognize and play pronunciation."
-      }
+      },
+      "bundleIdentifier": "com.takashiag.tapreader"
     },
     "android": {
       "adaptiveIcon": {

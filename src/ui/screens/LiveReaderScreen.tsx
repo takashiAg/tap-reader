@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   LayoutChangeEvent,
@@ -28,39 +28,78 @@ type CameraSize = {
 
 export function LiveReaderScreen() {
   const reader = liveReaderUiAdapter;
+  const cameraRef = useRef<CameraView>(null);
+  const isScanningRef = useRef(false);
   const [permission, requestPermission] = useCameraPermissions();
   const [languageId, setLanguageId] = useState<UiLanguageId>('ko');
   const [mode, setMode] = useState<UiRecognitionMode>('word');
   const [frame, setFrame] = useState<UiRecognitionFrame>(() => reader.getInitialFrame('ko', 'word'));
   const [selectedToken, setSelectedToken] = useState<UiRecognizedToken | null>(null);
   const [cameraSize, setCameraSize] = useState<CameraSize>({ width: 1, height: 1 });
+  const [isCameraReady, setIsCameraReady] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [isRecognizingLive, setIsRecognizingLive] = useState(false);
 
   const language = useMemo(() => reader.getLanguage(languageId), [languageId, reader]);
   const languages = useMemo(() => reader.getLanguages(), [reader]);
 
   useEffect(() => {
-    setSelectedToken(null);
-    setFrame(reader.recognizeLiveFrame(languageId, mode, 0));
-  }, [languageId, mode, reader]);
+    if (!isCameraReady) {
+      return;
+    }
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setFrame((currentFrame) =>
-        reader.recognizeLiveFrame(
-          languageId,
-          mode,
-          Math.floor(currentFrame.capturedAt / 1200) + 1,
-        ),
-      );
-    }, 1400);
+    const recognizeCameraImage = async () => {
+      if (isScanningRef.current || isProcessingImage) {
+        return;
+      }
+
+      isScanningRef.current = true;
+      setIsRecognizingLive(true);
+
+      try {
+        const photo = await cameraRef.current?.takePictureAsync({
+          quality: 0.55,
+        });
+
+        if (photo?.uri) {
+          const nextFrame = await reader.recognizeStillImage(photo.uri, languageId, mode);
+          setFrame(nextFrame);
+        }
+      } catch {
+        setFrame((currentFrame) =>
+          reader.recognizeLiveFrame(
+            languageId,
+            mode,
+            Math.floor(currentFrame.capturedAt / 1200) + 1,
+          ),
+        );
+      } finally {
+        isScanningRef.current = false;
+        setIsRecognizingLive(false);
+      }
+    };
+
+    recognizeCameraImage();
+    const timer = setInterval(recognizeCameraImage, 2600);
 
     return () => clearInterval(timer);
-  }, [languageId, mode, reader]);
+  }, [isCameraReady, isProcessingImage, languageId, mode, reader]);
 
   const handleCameraLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     setCameraSize({ width, height });
+  };
+
+  const handleLanguageChange = (nextLanguageId: UiLanguageId) => {
+    setLanguageId(nextLanguageId);
+    setSelectedToken(null);
+    setFrame(reader.recognizeLiveFrame(nextLanguageId, mode, 0));
+  };
+
+  const handleModeChange = (nextMode: UiRecognitionMode) => {
+    setMode(nextMode);
+    setSelectedToken(null);
+    setFrame(reader.recognizeLiveFrame(languageId, nextMode, 0));
   };
 
   const handleTokenPress = (token: UiRecognizedToken) => {
@@ -121,7 +160,13 @@ export function LiveReaderScreen() {
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
-      <CameraView style={styles.camera} facing="back" onLayout={handleCameraLayout}>
+      <CameraView
+        ref={cameraRef}
+        style={styles.camera}
+        facing="back"
+        onCameraReady={() => setIsCameraReady(true)}
+        onLayout={handleCameraLayout}
+      >
         <SafeAreaView style={styles.overlay}>
           <View style={styles.topBar}>
             <View>
@@ -142,7 +187,7 @@ export function LiveReaderScreen() {
               <Pressable
                 key={profile.id}
                 style={[styles.languageButton, profile.id === languageId && styles.languageButtonActive]}
-                onPress={() => setLanguageId(profile.id)}
+                onPress={() => handleLanguageChange(profile.id)}
               >
                 <Text
                   style={[
@@ -183,13 +228,13 @@ export function LiveReaderScreen() {
             <View style={styles.modeRow}>
               <Pressable
                 style={[styles.segmentButton, mode === 'word' && styles.segmentButtonActive]}
-                onPress={() => setMode('word')}
+                onPress={() => handleModeChange('word')}
               >
                 <Text style={[styles.segmentText, mode === 'word' && styles.segmentTextActive]}>Words</Text>
               </Pressable>
               <Pressable
                 style={[styles.segmentButton, mode === 'character' && styles.segmentButtonActive]}
-                onPress={() => setMode('character')}
+                onPress={() => handleModeChange('character')}
               >
                 <Text style={[styles.segmentText, mode === 'character' && styles.segmentTextActive]}>
                   Characters
@@ -224,8 +269,10 @@ export function LiveReaderScreen() {
                 <Text style={styles.secondaryButtonText}>Import image</Text>
               </Pressable>
               <View style={styles.liveStatus}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>OCR provider: mock</Text>
+                <View style={[styles.liveDot, isRecognizingLive && styles.liveDotActive]} />
+                <Text style={styles.liveText}>
+                  {isRecognizingLive ? 'Recognizing' : 'Live OCR'}
+                </Text>
               </View>
             </View>
           </View>
@@ -477,6 +524,9 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#22C55E',
+  },
+  liveDotActive: {
+    backgroundColor: '#FACC15',
   },
   liveText: {
     color: '#CBD5E1',

@@ -7,7 +7,7 @@ import type {
 } from '../../domain/recognition/recognition';
 import type { OcrPort } from '../../application/ports';
 
-const sampleWords: Record<LanguageId, Array<Omit<RecognizedToken, 'id'>>> = {
+const sampleWords: Record<LanguageId, Omit<RecognizedToken, 'id'>[]> = {
   ko: [
     {
       text: '안녕하세요',

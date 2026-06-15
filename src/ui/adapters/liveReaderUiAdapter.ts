@@ -8,10 +8,8 @@ import type {
 } from '../../domain/recognition/recognition';
 import type {
   LiveReaderUiPort,
-  UiLanguageId,
   UiLanguageProfile,
   UiRecognitionFrame,
-  UiRecognitionMode,
   UiRecognizedToken,
 } from '../ports/liveReaderPort';
 

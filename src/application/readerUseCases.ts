@@ -1,5 +1,4 @@
-import type { LanguageProfile } from '../domain/language/language';
-import type { LanguageId } from '../domain/language/language';
+import type { LanguageId, LanguageProfile } from '../domain/language/language';
 import type { RecognitionMode, RecognizedToken } from '../domain/recognition/recognition';
 import type { OcrPort, SpeechPort } from './ports';
 
