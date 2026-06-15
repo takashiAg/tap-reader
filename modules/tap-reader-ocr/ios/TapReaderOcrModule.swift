@@ -9,13 +9,15 @@ public class TapReaderOcrModule: Module {
     AsyncFunction("recognizeImage") { (uri: String, languageId: String, mode: String) throws -> [String: Any] in
       let imageUrl = try resolveImageUrl(uri)
       guard let image = UIImage(contentsOfFile: imageUrl.path), let cgImage = image.cgImage else {
-        throw OcrException("Unable to load image at \(uri)")
+        throw OcrError("Unable to load image at \(uri)")
       }
 
       let request = VNRecognizeTextRequest()
       request.recognitionLevel = .accurate
       request.usesLanguageCorrection = true
-      request.automaticallyDetectsLanguage = true
+      if #available(iOS 16.0, *) {
+        request.automaticallyDetectsLanguage = true
+      }
 
       let languageHints = recognitionLanguages(for: languageId)
       if !languageHints.isEmpty {
@@ -48,7 +50,7 @@ private func resolveImageUrl(_ uri: String) throws -> URL {
     return URL(fileURLWithPath: uri)
   }
 
-  throw OcrException("Unsupported image uri: \(uri)")
+  throw OcrError("Unsupported image uri: \(uri)")
 }
 
 private func recognitionLanguages(for languageId: String) -> [String] {
@@ -86,7 +88,7 @@ private func recognizedTokens(
       let characterText = String(character)
       let stringIndex = text.index(text.startIndex, offsetBy: characterIndex)
       let range = stringIndex..<text.index(after: stringIndex)
-      let box = (try? candidate.boundingBox(for: range)) ?? observation.boundingBox
+      let box = candidateBounds(candidate, range: range, fallback: observation.boundingBox)
 
       return tokenDictionary(
         id: "\(languageId)-\(observationIndex)-char-\(characterIndex)-\(characterText)",
@@ -113,13 +115,13 @@ private func recognizedTokens(
   }
 
   var searchStart = text.startIndex
-  return words.enumerated().compactMap { wordIndex, word in
+  return words.enumerated().compactMap { wordIndex, word -> [String: Any]? in
     guard let range = text.range(of: word, range: searchStart..<text.endIndex) else {
       return nil
     }
 
     searchStart = range.upperBound
-    let box = (try? candidate.boundingBox(for: range)) ?? observation.boundingBox
+    let box = candidateBounds(candidate, range: range, fallback: observation.boundingBox)
 
     return tokenDictionary(
       id: "\(languageId)-\(observationIndex)-word-\(wordIndex)-\(word)",
@@ -142,6 +144,19 @@ private func tokenDictionary(id: String, text: String, bounds: CGRect, confidenc
     ],
     "confidence": confidence
   ]
+}
+
+private func candidateBounds(_ candidate: VNRecognizedText, range: Range<String.Index>, fallback: CGRect) -> CGRect {
+  guard let rectangle = try? candidate.boundingBox(for: range) else {
+    return fallback
+  }
+
+  return CGRect(
+    x: rectangle.bottomLeft.x,
+    y: rectangle.bottomLeft.y,
+    width: rectangle.bottomRight.x - rectangle.bottomLeft.x,
+    height: rectangle.topLeft.y - rectangle.bottomLeft.y
+  )
 }
 
 private extension UIImage {
@@ -169,14 +184,14 @@ private extension UIImage {
   }
 }
 
-private class OcrException: Exception {
+private struct OcrError: Error, LocalizedError {
   private let message: String
 
   init(_ message: String) {
     self.message = message
   }
 
-  override var reason: String {
+  var errorDescription: String? {
     message
   }
 }

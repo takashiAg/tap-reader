@@ -1,6 +1,7 @@
 {
   "platforms": ["apple"],
   "apple": {
+    "podspecPath": "ios/TapReaderOcr.podspec",
     "modules": ["TapReaderOcrModule"]
   }
 }

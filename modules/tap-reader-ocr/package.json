@@ -1,0 +1,21 @@
+{
+  "name": "tap-reader-ocr",
+  "version": "1.0.0",
+  "description": "On-device OCR bridge for Tap Reader",
+  "main": "src/TapReaderOcrModule.ts",
+  "types": "src/TapReaderOcr.types.ts",
+  "keywords": [
+    "expo",
+    "ocr",
+    "vision"
+  ],
+  "expo": {
+    "autolinking": {
+      "nativeModulesDir": "."
+    }
+  },
+  "peerDependencies": {
+    "expo": "*"
+  },
+  "private": true
+}

@@ -2,10 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   LayoutChangeEvent,
+  Platform,
   Pressable,
   SafeAreaView,
   StyleSheet,
@@ -40,18 +41,58 @@ export function LiveReaderScreen() {
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [isRecognizingLive, setIsRecognizingLive] = useState(false);
+  const [scanStatus, setScanStatus] = useState('Point at text');
 
   const language = useMemo(() => reader.getLanguage(languageId), [languageId, reader]);
   const languages = useMemo(() => reader.getLanguages(), [reader]);
 
   useEffect(() => {
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
+      setIsCameraAvailable(true);
+      return;
+    }
+
     CameraView.isAvailableAsync()
       .then(setIsCameraAvailable)
       .catch(() => setIsCameraAvailable(false));
   }, []);
 
+  const recognizeCameraImage = useCallback(async () => {
+    if (isScanningRef.current || isProcessingImage || !isCameraReady) {
+      return;
+    }
+
+    isScanningRef.current = true;
+    setIsRecognizingLive(true);
+    setScanStatus('Capturing');
+
+    try {
+      const photo = await cameraRef.current?.takePictureAsync({
+        quality: 0.75,
+        skipProcessing: false,
+      });
+
+      if (!photo?.uri) {
+        setScanStatus('No camera image');
+        return;
+      }
+
+      setScanStatus('Recognizing');
+      const nextFrame = await reader.recognizeStillImage(photo.uri, languageId, mode);
+      setFrame(nextFrame);
+      setScanStatus(nextFrame.tokens.length > 0 ? `${nextFrame.tokens.length} items detected` : 'No text found');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'OCR failed';
+      setScanStatus(message);
+    } finally {
+      isScanningRef.current = false;
+      setIsRecognizingLive(false);
+    }
+  }, [isCameraReady, isProcessingImage, languageId, mode, reader]);
+
   useEffect(() => {
     if (isCameraAvailable === false) {
+      setScanStatus('Mock camera');
       setFrame((currentFrame) =>
         reader.recognizeLiveFrame(
           languageId,
@@ -63,45 +104,12 @@ export function LiveReaderScreen() {
     }
 
     if (!isCameraReady) {
+      setScanStatus('Starting camera');
       return;
     }
 
-    const recognizeCameraImage = async () => {
-      if (isScanningRef.current || isProcessingImage) {
-        return;
-      }
-
-      isScanningRef.current = true;
-      setIsRecognizingLive(true);
-
-      try {
-        const photo = await cameraRef.current?.takePictureAsync({
-          quality: 0.55,
-        });
-
-        if (photo?.uri) {
-          const nextFrame = await reader.recognizeStillImage(photo.uri, languageId, mode);
-          setFrame(nextFrame);
-        }
-      } catch {
-        setFrame((currentFrame) =>
-          reader.recognizeLiveFrame(
-            languageId,
-            mode,
-            Math.floor(currentFrame.capturedAt / 1200) + 1,
-          ),
-        );
-      } finally {
-        isScanningRef.current = false;
-        setIsRecognizingLive(false);
-      }
-    };
-
-    recognizeCameraImage();
-    const timer = setInterval(recognizeCameraImage, 2600);
-
-    return () => clearInterval(timer);
-  }, [isCameraAvailable, isCameraReady, isProcessingImage, languageId, mode, reader]);
+    setScanStatus('Ready to scan');
+  }, [isCameraAvailable, isCameraReady, languageId, mode, reader]);
 
   const handleCameraLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
@@ -179,13 +187,13 @@ export function LiveReaderScreen() {
     <View style={styles.screen}>
       <StatusBar style="light" />
       {isCameraAvailable ? (
-        <CameraView
-          ref={cameraRef}
-          style={styles.camera}
-          facing="back"
-          onCameraReady={() => setIsCameraReady(true)}
-          onLayout={handleCameraLayout}
-        >
+        <View style={styles.cameraContainer} onLayout={handleCameraLayout}>
+          <CameraView
+            ref={cameraRef}
+            style={styles.camera}
+            facing="back"
+            onCameraReady={() => setIsCameraReady(true)}
+          />
           <ReaderOverlay
             cameraSize={cameraSize}
             frame={frame}
@@ -193,6 +201,7 @@ export function LiveReaderScreen() {
             handleLanguageChange={handleLanguageChange}
             handleModeChange={handleModeChange}
             handlePickImage={handlePickImage}
+            handleScan={recognizeCameraImage}
             handleSpeakAll={handleSpeakAll}
             handleTokenPress={handleTokenPress}
             isCameraAvailable={isCameraAvailable}
@@ -203,9 +212,10 @@ export function LiveReaderScreen() {
             languages={languages}
             mode={mode}
             reader={reader}
+            scanStatus={scanStatus}
             selectedToken={selectedToken}
           />
-        </CameraView>
+        </View>
       ) : (
         <View style={styles.cameraUnavailableSurface} onLayout={handleCameraLayout}>
           <ReaderOverlay
@@ -215,6 +225,7 @@ export function LiveReaderScreen() {
             handleLanguageChange={handleLanguageChange}
             handleModeChange={handleModeChange}
             handlePickImage={handlePickImage}
+            handleScan={recognizeCameraImage}
             handleSpeakAll={handleSpeakAll}
             handleTokenPress={handleTokenPress}
             isCameraAvailable={isCameraAvailable}
@@ -225,6 +236,7 @@ export function LiveReaderScreen() {
             languages={languages}
             mode={mode}
             reader={reader}
+            scanStatus={scanStatus}
             selectedToken={selectedToken}
           />
         </View>
@@ -240,6 +252,7 @@ type ReaderOverlayProps = {
   handleLanguageChange: (languageId: UiLanguageId) => void;
   handleModeChange: (mode: UiRecognitionMode) => void;
   handlePickImage: () => void;
+  handleScan: () => void;
   handleSpeakAll: () => void;
   handleTokenPress: (token: UiRecognizedToken) => void;
   isCameraAvailable: boolean;
@@ -250,6 +263,7 @@ type ReaderOverlayProps = {
   languages: ReturnType<typeof liveReaderUiAdapter.getLanguages>;
   mode: UiRecognitionMode;
   reader: typeof liveReaderUiAdapter;
+  scanStatus: string;
   selectedToken: UiRecognizedToken | null;
 };
 
@@ -259,6 +273,7 @@ function ReaderOverlay({
   handleLanguageChange,
   handleModeChange,
   handlePickImage,
+  handleScan,
   handleSpeakAll,
   handleTokenPress,
   isCameraAvailable,
@@ -269,6 +284,7 @@ function ReaderOverlay({
   languages,
   mode,
   reader,
+  scanStatus,
   selectedToken,
 }: ReaderOverlayProps) {
   return (
@@ -360,6 +376,9 @@ function ReaderOverlay({
                 <Text numberOfLines={1} style={styles.resultMeta}>
                   {selectedToken?.reading ?? `${frame.tokens.length} tappable items`}
                 </Text>
+                <Text numberOfLines={2} style={styles.scanStatusText}>
+                  {scanStatus}
+                </Text>
               </View>
               <Pressable accessibilityLabel="Speak detected text" style={styles.speakButton} onPress={handleSpeakAll}>
                 <Ionicons name="volume-high-outline" size={22} color="#042F2E" />
@@ -374,6 +393,13 @@ function ReaderOverlay({
                   <Ionicons name="images-outline" size={18} color="#FFFFFF" />
                 )}
                 <Text style={styles.secondaryButtonText}>Import image</Text>
+              </Pressable>
+              <Pressable style={styles.scanButton} onPress={handleScan} disabled={isRecognizingLive}>
+                {isRecognizingLive ? (
+                  <ActivityIndicator color="#042F2E" />
+                ) : (
+                  <Ionicons name="scan-outline" size={18} color="#042F2E" />
+                )}
               </Pressable>
               <View style={styles.liveStatus}>
                 <View style={[styles.liveDot, isRecognizingLive && styles.liveDotActive]} />
@@ -392,8 +418,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#020617',
   },
-  camera: {
+  cameraContainer: {
     flex: 1,
+    backgroundColor: '#020617',
+  },
+  camera: {
+    ...StyleSheet.absoluteFillObject,
   },
   cameraUnavailableSurface: {
     flex: 1,
@@ -593,6 +623,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
+  scanStatusText: {
+    color: '#99F6E4',
+    fontSize: 12,
+    marginTop: 4,
+  },
   speakButton: {
     width: 48,
     height: 48,
@@ -621,6 +656,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
+  },
+  scanButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: '#A7F3D0',
   },
   liveStatus: {
     flexDirection: 'row',
